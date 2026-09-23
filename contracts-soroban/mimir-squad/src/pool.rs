@@ -10,6 +10,25 @@ use crate::types::{
     MIN_DURATION, RESULT_CANCELLED, SIDE_A, SIDE_B,
 };
 
+/// The fee on one winning claim: `floor(profit * fee_bps / BPS_DIVISOR)`.
+///
+/// Fees apply to PROFIT only, so a winner never receives less than their
+/// principal. The division truncates, so the fee rounds DOWN and the fractional
+/// remainder stays with the participant: `net = gross - fee`, so fee rounding
+/// never leaves anything behind in escrow. `claim` and `preview_claim` both use
+/// this one function, so a preview cannot round differently from the payout.
+pub(crate) fn profit_fee(principal: i128, gross: i128, fee_bps: u32) -> Result<i128, Error> {
+    let profit = if gross > principal {
+        gross - principal
+    } else {
+        0
+    };
+    profit
+        .checked_mul(fee_bps as i128)
+        .map(|p| p / BPS_DIVISOR)
+        .ok_or(Error::Overflow)
+}
+
 fn require_side(side: u32) -> Result<(), Error> {
     if side != SIDE_A && side != SIDE_B {
         return Err(Error::BadSide);
@@ -282,13 +301,7 @@ pub fn claim(
                 .ok_or(Error::Overflow)?
         };
 
-        // Fees apply to PROFIT only, so a winner never receives less than their
-        // principal.
-        let profit = if gross > principal { gross - principal } else { 0 };
-        fee = profit
-            .checked_mul(market.fee_bps as i128)
-            .map(|p| p / BPS_DIVISOR)
-            .ok_or(Error::Overflow)?;
+        fee = profit_fee(principal, gross, market.fee_bps)?;
     }
 
     market.remaining_escrow -= gross;
@@ -381,11 +394,7 @@ pub fn preview_claim(
             .map(|p| p / winner_pool)
             .ok_or(Error::Overflow)?
     };
-    let profit = if gross > principal { gross - principal } else { 0 };
-    let fee = profit
-        .checked_mul(market.fee_bps as i128)
-        .map(|p| p / BPS_DIVISOR)
-        .ok_or(Error::Overflow)?;
+    let fee = profit_fee(principal, gross, market.fee_bps)?;
     Ok(ClaimResult {
         gross,
         fee,

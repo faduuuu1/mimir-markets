@@ -28,6 +28,8 @@ mod test_common;
 #[cfg(test)]
 mod test_decimals;
 #[cfg(test)]
+mod test_fee_rounding;
+#[cfg(test)]
 mod test_fees;
 #[cfg(test)]
 mod test_lifecycle;
